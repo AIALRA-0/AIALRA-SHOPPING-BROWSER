@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "aialra-shopping-browser": {
+      "command": "node",
+      "args": [
+        "./scripts/launch-playwright-mcp.mjs"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "AIALRA_SHOPPING_BROWSER_PROFILE_DIR",
+        "AIALRA_SHOPPING_BROWSER_OUTPUT_DIR",
+        "AIALRA_SHOPPING_BROWSER_BROWSER"
+      ]
+    }
+  }
+}

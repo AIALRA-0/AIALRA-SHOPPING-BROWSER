@@ -1,0 +1,37 @@
+{
+  "name": "aialra-shopping-browser",
+  "version": "0.1.0",
+  "description": "Local visible Chrome research backend for read-only shopping evidence collection with persistent user-managed login state, manual challenge handoff, and structured evidence validation",
+  "author": {
+    "name": "AIALRA-0"
+  },
+  "homepage": "https://github.com/AIALRA-0/AIALRA-SHOPPING-BROWSER",
+  "repository": "https://github.com/AIALRA-0/AIALRA-SHOPPING-BROWSER",
+  "license": "Apache-2.0",
+  "keywords": [
+    "shopping",
+    "browser",
+    "playwright",
+    "mcp",
+    "price-research",
+    "evidence"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AIALRA Shopping Browser",
+    "shortDescription": "用独立 Chrome 会话读取购物网站的当前证据",
+    "longDescription": "提供本地可见 Chrome、持久登录资料、人工登录与验证交接、只读浏览规则和统一证据校验，供平台专用价格研究 Skill 使用",
+    "developerName": "AIALRA-0",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/AIALRA-0/AIALRA-SHOPPING-BROWSER",
+    "defaultPrompt": [
+      "检查购物浏览器是否可以正常启动",
+      "用独立购物浏览器读取当前商品页面"
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

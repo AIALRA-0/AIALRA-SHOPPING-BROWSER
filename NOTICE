@@ -1,0 +1,8 @@
+AIALRA Shopping Browser
+Copyright 2026 AIALRA-0
+
+This product launches Microsoft Playwright MCP as an external pinned dependency
+Microsoft Playwright MCP is licensed under the Apache License 2.0
+https://github.com/microsoft/playwright-mcp
+
+No third-party source code is copied into this repository

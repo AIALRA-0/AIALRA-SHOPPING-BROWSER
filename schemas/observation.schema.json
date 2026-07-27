@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AIALRA-0/AIALRA-SHOPPING-BROWSER/schemas/observation.schema.json",
+  "title": "AIALRA Shopping Browser observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "identity",
+    "access",
+    "collection",
+    "evidence",
+    "safety"
+  ],
+  "properties": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "platform",
+        "action"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "action": {
+          "enum": [
+            "preflight",
+            "search",
+            "detail"
+          ]
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source_backend",
+        "page_url",
+        "page_title",
+        "allowed_hosts"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "results-visible",
+            "no-results-visible",
+            "completed",
+            "login-required",
+            "challenge-required",
+            "rate-limited",
+            "layout-changed",
+            "policy-blocked",
+            "fatal"
+          ]
+        },
+        "source_backend": {
+          "const": "aialra-shopping-browser"
+        },
+        "page_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 4096
+        },
+        "page_title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "allowed_hosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          }
+        }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query",
+        "round_id",
+        "sort_mode",
+        "observed_at",
+        "visible_item_count"
+      ],
+      "properties": {
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "round_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "sort_mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "observed_at": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 40
+        },
+        "visible_item_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "warnings"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "read_only",
+        "account_write_performed",
+        "stop_signal"
+      ],
+      "properties": {
+        "read_only": {
+          "const": true
+        },
+        "account_write_performed": {
+          "const": false
+        },
+        "stop_signal": {
+          "enum": [
+            "none",
+            "user-required",
+            "challenge-required",
+            "rate-limited",
+            "layout-changed",
+            "policy-blocked",
+            "fatal"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_id",
+        "title",
+        "canonical_url",
+        "image_urls",
+        "fields",
+        "observations"
+      ],
+      "properties": {
+        "stable_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "canonical_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "image_urls": {
+          "type": "array",
+          "maxItems": 24,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "fields": {
+          "type": "object",
+          "maxProperties": 100,
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "locator",
+              "text_excerpt"
+            ],
+            "properties": {
+              "source": {
+                "enum": [
+                  "accessibility-snapshot",
+                  "visible-dom",
+                  "screenshot"
+                ]
+              },
+              "locator": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "text_excerpt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 280
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

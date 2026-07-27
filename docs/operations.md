@@ -1,0 +1,103 @@
+# 使用与故障处理
+
+## 正常启动
+
+Codex 在第一次调用 `aialra-shopping-browser` 工具时启动 MCP
+
+MCP 再启动独立 Chrome
+
+不需要手工运行常驻服务，不会开放无鉴权 WebSocket 端口
+
+## 第一次登录
+
+1. Agent 打开目标网站
+2. 页面要求登录时，Agent 停止
+3. 用户直接在独立 Chrome 中登录
+4. 用户完成后通知 Agent
+5. Agent 从当前页面继续
+
+账号、密码和验证码始终由用户输入
+
+## Chrome 没有出现
+
+先确认系统安装了 Google Chrome
+
+再运行
+
+```bash
+npm run test:mcp
+```
+
+测试通过表示插件、Node、MCP 和 Chrome 可以正常配合
+
+测试失败时查看脱敏后的错误类型，不要上传浏览器资料或完整日志
+
+## 提示资料正在使用
+
+同一个 Chrome 资料不能同时被两个浏览器进程写入
+
+关闭使用 `AIALRA Shopping Browser` 独立资料的旧 Chrome 窗口，再重新开始任务
+
+不要删除日常 Chrome 资料
+
+## 清除登录状态
+
+关闭独立 Chrome
+
+把以下目录移动到废纸篓
+
+```text
+~/Library/Application Support/AIALRA Shopping Browser/Profile
+```
+
+下次启动会创建全新的空白资料
+
+这个操作只能清除独立购物浏览器，不影响日常 Chrome
+
+## 修改资料位置
+
+设置
+
+```bash
+export AIALRA_SHOPPING_BROWSER_PROFILE_DIR="/你选择的本地目录"
+```
+
+目录必须位于插件仓库外
+
+不要把整个主目录、磁盘根目录或共享同步目录设为资料目录
+
+## 页面要求验证码
+
+Agent 停止自动操作
+
+用户亲自完成验证码
+
+失败后不自动重复尝试
+
+验证码持续出现时结束本次运行并报告覆盖缺口
+
+## 页面显示限流
+
+Agent 返回 `rate-limited`
+
+本次运行不自动重试，不切换代理或浏览器
+
+稍后开始新的用户任务可以重新预检
+
+## 页面结构改变
+
+Agent 返回 `layout-changed`
+
+平台 Skill 维护者根据新的可见结构更新字段映射和测试
+
+不要为了交付结果而猜测字段
+
+## 宿主策略阻止
+
+Agent 返回 `policy-blocked`
+
+这个状态表示当前任务的工具执行层明确拒绝访问
+
+本插件不能在同一受阻任务中作为绕过路径
+
+安装新插件后需要新建任务，新任务会根据实际加载的工具重新判断

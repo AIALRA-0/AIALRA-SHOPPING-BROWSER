@@ -1,0 +1,51 @@
+{
+  "identity": {
+    "schema_version": "1.0",
+    "run_id": "local-fixture-001",
+    "platform": "fixture",
+    "action": "search"
+  },
+  "access": {
+    "status": "results-visible",
+    "source_backend": "aialra-shopping-browser",
+    "page_url": "http://127.0.0.1:3100/search?q=test",
+    "page_title": "本地测试商店",
+    "allowed_hosts": [
+      "127.0.0.1"
+    ]
+  },
+  "collection": {
+    "query": "test",
+    "round_id": "round-1",
+    "sort_mode": "relevance",
+    "observed_at": "2026-07-27T12:00:00-07:00",
+    "visible_item_count": 1
+  },
+  "evidence": {
+    "items": [
+      {
+        "stable_id": "fixture-001",
+        "title": "本地测试商品",
+        "canonical_url": "http://127.0.0.1:3100/item/fixture-001",
+        "image_urls": [],
+        "fields": {
+          "display_price": "100.00",
+          "currency": "CNY"
+        },
+        "observations": [
+          {
+            "source": "accessibility-snapshot",
+            "locator": "商品卡片 1",
+            "text_excerpt": "本地测试商品 ¥100"
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "safety": {
+    "read_only": true,
+    "account_write_performed": false,
+    "stop_signal": "none"
+  }
+}

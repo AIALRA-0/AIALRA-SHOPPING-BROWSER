@@ -1,0 +1,7 @@
+interface:
+  display_name: "购物浏览器研究后端"
+  short_description: "为平台 Skill 提供独立 Chrome 和可校验证据"
+  default_prompt: "使用 $shopping-browser-research 检查本地购物浏览器并执行平台 Skill 声明的只读网页动作"
+
+policy:
+  allow_implicit_invocation: true

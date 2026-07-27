@@ -1,0 +1,44 @@
+{
+  "identity": {
+    "schema_version": "1.0",
+    "run_id": "invalid-001",
+    "platform": "fixture",
+    "action": "detail"
+  },
+  "access": {
+    "status": "completed",
+    "source_backend": "aialra-shopping-browser",
+    "page_url": "https://shop.invalid/item/1?access_token=example",
+    "page_title": "无效样例",
+    "allowed_hosts": [
+      "shop.invalid"
+    ]
+  },
+  "collection": {
+    "query": null,
+    "round_id": "round-1",
+    "sort_mode": null,
+    "observed_at": "2026-07-27T12:00:00",
+    "visible_item_count": 1
+  },
+  "evidence": {
+    "items": [
+      {
+        "stable_id": "item-1",
+        "title": "无效商品",
+        "canonical_url": "https://other.invalid/item/1",
+        "image_urls": [],
+        "fields": {
+          "access_token": "example"
+        },
+        "observations": []
+      }
+    ],
+    "warnings": []
+  },
+  "safety": {
+    "read_only": false,
+    "account_write_performed": true,
+    "stop_signal": "none"
+  }
+}
