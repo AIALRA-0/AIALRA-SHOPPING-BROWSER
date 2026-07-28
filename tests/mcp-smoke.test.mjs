@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { access, mkdtemp, rm } from "node:fs/promises"
+import { access, mkdtemp, readdir, rm } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -196,4 +196,19 @@ test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", {
     assert.equal(stderr.includes("Browser is already in use"), false, stderr)
     assert.equal(stderr.includes("Error"), false, stderr)
   }
+  for (const child of children.slice().reverse()) {
+    if (child.exitCode === null) {
+      child.kill("SIGTERM")
+      await Promise.race([
+        once(child, "exit"),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ])
+    }
+  }
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const remainingOutputEntries = await readdir(join(temporaryRoot, "output"))
+  assert.deepEqual(
+    remainingOutputEntries.filter((entry) => entry.startsWith("session-")),
+    [],
+  )
 })

@@ -1,11 +1,20 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { readFile } from "node:fs/promises"
 import {
   buildBrowserArgs,
   buildLaunchConfiguration,
   buildMcpArgs,
+  cleanupStaleSessionDirectories,
+  createSessionOutputDirectory,
   PLAYWRIGHT_MCP_VERSION,
+  removeSessionOutputDirectory,
   resolveBrowserExecutable,
   sanitizeClientMessage,
   sanitizeProtocolLine,
@@ -45,7 +54,12 @@ test("启动器固定依赖版本并让 MCP 连接共享 CDP 端点", () => {
     AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: outputDirectory,
     AIALRA_SHOPPING_BROWSER_BROWSER: "chrome",
   })
-  const args = buildMcpArgs("http://127.0.0.1:12345", configuration)
+  const sessionOutputDirectory = `${outputDirectory}/session-test`
+  const args = buildMcpArgs(
+    "http://127.0.0.1:12345",
+    configuration,
+    sessionOutputDirectory,
+  )
   assert.equal(PLAYWRIGHT_MCP_VERSION, "0.0.78")
   assert.ok(args.includes(`@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`))
   assert.ok(args.includes("--cdp-endpoint"))
@@ -55,6 +69,10 @@ test("启动器固定依赖版本并让 MCP 连接共享 CDP 端点", () => {
   )
   assert.equal(args.includes("--user-data-dir"), false)
   assert.ok(args.includes("--output-max-size"))
+  assert.equal(
+    args[args.indexOf("--output-dir") + 1],
+    sessionOutputDirectory,
+  )
   assert.ok(args.includes("--output-mode"))
   assert.equal(
     args[args.indexOf("--output-mode") + 1],
@@ -65,6 +83,57 @@ test("启动器固定依赖版本并让 MCP 连接共享 CDP 端点", () => {
   assert.ok(browserArgs.includes("--remote-debugging-address=127.0.0.1"))
   assert.ok(browserArgs.includes("--remote-debugging-port=0"))
   assert.equal(configuration.workingDirectory, outputDirectory)
+})
+
+test("客户端临时输出目录使用私有权限并能完整清理", (t) => {
+  const temporaryRoot = `/tmp/aialra-shopping-browser-session-${process.pid}`
+  const profileDirectory = `/tmp/aialra-shopping-browser-session-${process.pid}/profile`
+  const outputDirectory = `/tmp/aialra-shopping-browser-session-${process.pid}/output`
+  t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }))
+  const configuration = buildLaunchConfiguration({
+    AIALRA_SHOPPING_BROWSER_EXECUTABLE: process.execPath,
+    AIALRA_SHOPPING_BROWSER_PROFILE_DIR: profileDirectory,
+    AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: outputDirectory,
+  })
+  const sessionDirectory = createSessionOutputDirectory(configuration)
+  assert.ok(sessionDirectory.startsWith(`${outputDirectory}/session-`))
+  removeSessionOutputDirectory(configuration, sessionDirectory)
+  assert.throws(
+    () =>
+      removeSessionOutputDirectory(
+        configuration,
+        `/tmp/aialra-shopping-browser-session-${process.pid}`,
+      ),
+    /不在允许范围内/,
+  )
+})
+
+test("后续启动只清理已经退出客户端留下的目录", (t) => {
+  const temporaryRoot = `/tmp/aialra-shopping-browser-stale-${process.pid}`
+  const configuration = buildLaunchConfiguration({
+    AIALRA_SHOPPING_BROWSER_EXECUTABLE: process.execPath,
+    AIALRA_SHOPPING_BROWSER_PROFILE_DIR: `${temporaryRoot}/profile`,
+    AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: `${temporaryRoot}/output`,
+  })
+  t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }))
+  const staleDirectory = `${configuration.outputDirectory}/session-stale-test`
+  const liveDirectory = `${configuration.outputDirectory}/session-live-test`
+  mkdirSync(staleDirectory, { mode: 0o700 })
+  mkdirSync(liveDirectory, { mode: 0o700 })
+  writeFileSync(
+    `${staleDirectory}/owner.json`,
+    `${JSON.stringify({ pid: 2_147_483_647 })}\n`,
+    { mode: 0o600 },
+  )
+  writeFileSync(
+    `${liveDirectory}/owner.json`,
+    `${JSON.stringify({ pid: process.pid })}\n`,
+    { mode: 0o600 },
+  )
+  cleanupStaleSessionDirectories(configuration)
+  assert.equal(existsSync(staleDirectory), false)
+  assert.equal(existsSync(liveDirectory), true)
+  removeSessionOutputDirectory(configuration, liveDirectory)
 })
 
 test("浏览器程序可以通过明确的绝对路径配置", () => {

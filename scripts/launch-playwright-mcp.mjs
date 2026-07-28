@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 import {
+  chmodSync,
   existsSync,
+  mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -10,17 +13,19 @@ import {
   writeFileSync,
 } from "node:fs"
 import { homedir, platform } from "node:os"
-import { dirname, isAbsolute, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
 
 export const PLAYWRIGHT_MCP_VERSION = "0.0.78"
 export const SINGLETON_START_TIMEOUT_MS = 45_000
+export const STALE_SESSION_GRACE_MS = 10 * 60_000
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const USER_HOME = homedir()
 const ALLOWED_BROWSERS = new Set(["chrome", "msedge"])
+const SESSION_DIRECTORY_PREFIX = "session-"
 
 function defaultProfileDirectory() {
   if (platform() === "darwin") {
@@ -140,14 +145,18 @@ export function buildLaunchConfiguration(environment = process.env) {
   }
 }
 
-export function buildMcpArgs(endpoint, configuration) {
+export function buildMcpArgs(
+  endpoint,
+  configuration,
+  sessionOutputDirectory = configuration.outputDirectory,
+) {
   return [
     "--yes",
     `@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`,
     "--cdp-endpoint",
     endpoint,
     "--output-dir",
-    configuration.outputDirectory,
+    sessionOutputDirectory,
     "--output-mode",
     "stdout",
     "--output-max-size",
@@ -161,6 +170,84 @@ export function buildMcpArgs(endpoint, configuration) {
     "--timeout-navigation",
     "90000",
   ]
+}
+
+function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid < 1) {
+    return false
+  }
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error?.code !== "ESRCH"
+  }
+}
+
+function assertSessionDirectory(configuration, sessionDirectory) {
+  const relativePath = relative(configuration.outputDirectory, sessionDirectory)
+  if (
+    isAbsolute(relativePath) ||
+    dirname(relativePath) !== "." ||
+    !basename(relativePath).startsWith(SESSION_DIRECTORY_PREFIX)
+  ) {
+    throw new Error("客户端临时输出目录不在允许范围内")
+  }
+}
+
+export function removeSessionOutputDirectory(configuration, sessionDirectory) {
+  assertSessionDirectory(configuration, sessionDirectory)
+  rmSync(sessionDirectory, { recursive: true, force: true })
+}
+
+export function cleanupStaleSessionDirectories(configuration) {
+  const now = Date.now()
+  for (const entry of readdirSync(configuration.outputDirectory, {
+    withFileTypes: true,
+  })) {
+    if (
+      !entry.isDirectory() ||
+      !entry.name.startsWith(SESSION_DIRECTORY_PREFIX)
+    ) {
+      continue
+    }
+    const sessionDirectory = resolve(configuration.outputDirectory, entry.name)
+    const ownerFile = resolve(sessionDirectory, "owner.json")
+    let ownerPid = null
+    try {
+      ownerPid = JSON.parse(readFileSync(ownerFile, "utf8")).pid
+    } catch {
+      const age = now - statSync(sessionDirectory).mtimeMs
+      if (age <= STALE_SESSION_GRACE_MS) {
+        continue
+      }
+    }
+    if (ownerPid !== null && processIsAlive(ownerPid)) {
+      continue
+    }
+    removeSessionOutputDirectory(configuration, sessionDirectory)
+  }
+}
+
+export function createSessionOutputDirectory(configuration) {
+  cleanupStaleSessionDirectories(configuration)
+  const sessionDirectory = mkdtempSync(
+    resolve(configuration.outputDirectory, SESSION_DIRECTORY_PREFIX),
+  )
+  chmodSync(sessionDirectory, 0o700)
+  writeFileSync(
+    resolve(sessionDirectory, "owner.json"),
+    `${JSON.stringify(
+      {
+        created_at: new Date().toISOString(),
+        pid: process.pid,
+      },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600 },
+  )
+  return sessionDirectory
 }
 
 export function buildBrowserArgs(configuration) {
@@ -369,13 +456,27 @@ export function sanitizeProtocolLine(line) {
 export async function launch() {
   const configuration = buildLaunchConfiguration()
   const singleton = await ensureSingletonBrowser(configuration)
-  const args = buildMcpArgs(singleton.endpoint, configuration)
+  const sessionOutputDirectory = createSessionOutputDirectory(configuration)
+  const args = buildMcpArgs(
+    singleton.endpoint,
+    configuration,
+    sessionOutputDirectory,
+  )
   const child = spawn(configuration.executable, args, {
-    cwd: configuration.workingDirectory,
+    cwd: sessionOutputDirectory,
     env: process.env,
     stdio: ["pipe", "pipe", "inherit"],
     shell: false,
   })
+  let sessionCleaned = false
+  const cleanupSession = () => {
+    if (sessionCleaned) {
+      return
+    }
+    sessionCleaned = true
+    removeSessionOutputDirectory(configuration, sessionOutputDirectory)
+  }
+  process.once("exit", cleanupSession)
 
   child.stdout.pipe(process.stdout)
   const clientLines = createInterface({
@@ -418,11 +519,13 @@ export async function launch() {
   child.once("error", (error) => {
     process.stderr.write(`无法启动 Playwright MCP: ${error.message}\n`)
     closeOwnedBrowser()
+    cleanupSession()
     process.exitCode = 1
   })
   child.once("exit", (code, signal) => {
     clientLines.close()
     closeOwnedBrowser()
+    cleanupSession()
     if (signal) {
       process.kill(process.pid, signal)
       return

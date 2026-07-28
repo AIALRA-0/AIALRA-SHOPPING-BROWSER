@@ -1,6 +1,6 @@
 {
   "name": "aialra-shopping-browser",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local visible Chrome research backend for read-only shopping evidence collection with persistent user-managed login state, manual challenge handoff, and structured evidence validation",
   "author": {
     "name": "AIALRA-0"
