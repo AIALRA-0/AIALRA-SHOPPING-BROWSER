@@ -3,6 +3,7 @@
 import { mkdirSync } from "node:fs"
 import { homedir, platform } from "node:os"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
+import { createInterface } from "node:readline"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
 
@@ -80,6 +81,8 @@ export function buildLaunchConfiguration(environment = process.env) {
     profileDirectory,
     "--output-dir",
     outputDirectory,
+    "--output-mode",
+    "stdout",
     "--output-max-size",
     "67108864",
     "--codegen",
@@ -96,16 +99,67 @@ export function buildLaunchConfiguration(environment = process.env) {
     args,
     profileDirectory,
     outputDirectory,
+    workingDirectory: outputDirectory,
+  }
+}
+
+export function sanitizeClientMessage(message) {
+  if (
+    message?.method !== "tools/call" ||
+    message?.params?.name !== "browser_snapshot" ||
+    typeof message?.params?.arguments?.filename !== "string"
+  ) {
+    return { message, removedSnapshotFilename: false }
+  }
+  const { filename: _filename, ...safeArguments } = message.params.arguments
+  return {
+    message: {
+      ...message,
+      params: {
+        ...message.params,
+        arguments: safeArguments,
+      },
+    },
+    removedSnapshotFilename: true,
+  }
+}
+
+export function sanitizeProtocolLine(line) {
+  try {
+    const parsed = JSON.parse(line)
+    const result = sanitizeClientMessage(parsed)
+    return {
+      line: JSON.stringify(result.message),
+      removedSnapshotFilename: result.removedSnapshotFilename,
+    }
+  } catch {
+    return { line, removedSnapshotFilename: false }
   }
 }
 
 export function launch() {
   const configuration = buildLaunchConfiguration()
   const child = spawn(configuration.executable, configuration.args, {
-    cwd: PLUGIN_ROOT,
+    cwd: configuration.workingDirectory,
     env: process.env,
-    stdio: "inherit",
+    stdio: ["pipe", "pipe", "inherit"],
     shell: false,
+  })
+
+  child.stdout.pipe(process.stdout)
+  const clientLines = createInterface({
+    input: process.stdin,
+    crlfDelay: Infinity,
+  })
+  clientLines.on("line", (line) => {
+    const sanitized = sanitizeProtocolLine(line)
+    if (sanitized.removedSnapshotFilename) {
+      process.stderr.write("已忽略 browser_snapshot filename，页面快照只通过标准输出返回\n")
+    }
+    child.stdin.write(`${sanitized.line}\n`)
+  })
+  clientLines.once("close", () => {
+    child.stdin.end()
   })
 
   const forward = (signal) => {
@@ -121,6 +175,7 @@ export function launch() {
     process.exitCode = 1
   })
   child.once("exit", (code, signal) => {
+    clientLines.close()
     if (signal) {
       process.kill(process.pid, signal)
       return

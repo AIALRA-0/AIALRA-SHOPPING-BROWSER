@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { access, mkdtemp, rm } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -135,7 +135,7 @@ test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, a
   })
   const snapshot = await rpc.request("tools/call", {
     name: "browser_snapshot",
-    arguments: {},
+    arguments: { filename: "raw-page.snapshot.md" },
   })
   const text = snapshot.content
     .filter((entry) => entry.type === "text")
@@ -143,6 +143,9 @@ test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, a
     .join("\n")
   assert.match(text, /本地测试商品/)
   assert.match(text, /¥100/)
+  await assert.rejects(
+    access(join(temporaryRoot, "output", "raw-page.snapshot.md")),
+  )
 
   await rpc.request("tools/call", {
     name: "browser_close",
