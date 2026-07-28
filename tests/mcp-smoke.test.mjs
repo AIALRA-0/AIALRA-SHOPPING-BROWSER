@@ -131,15 +131,28 @@ test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", {
 
   const firstChild = launchClient()
   const firstRpc = createRpcClient(firstChild)
-  await firstRpc.request("initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: {
-      name: "aialra-shopping-browser-smoke",
-      version: "0.1.0",
-    },
-  })
+  const secondChild = launchClient()
+  const secondRpc = createRpcClient(secondChild)
+  await Promise.all([
+    firstRpc.request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: {
+        name: "aialra-shopping-browser-smoke",
+        version: "0.1.0",
+      },
+    }),
+    secondRpc.request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: {
+        name: "aialra-shopping-browser-smoke-second",
+        version: "0.1.0",
+      },
+    }),
+  ])
   firstRpc.notify("notifications/initialized")
+  secondRpc.notify("notifications/initialized")
 
   const listed = await firstRpc.request("tools/list")
   const names = new Set(listed.tools.map((tool) => tool.name))
@@ -165,17 +178,6 @@ test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", {
     access(join(temporaryRoot, "output", "raw-page.snapshot.md")),
   )
 
-  const secondChild = launchClient()
-  const secondRpc = createRpcClient(secondChild)
-  await secondRpc.request("initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: {
-      name: "aialra-shopping-browser-smoke-second",
-      version: "0.1.0",
-    },
-  })
-  secondRpc.notify("notifications/initialized")
   await secondRpc.request("tools/call", {
     name: "browser_navigate",
     arguments: { url: fixtureUrl },

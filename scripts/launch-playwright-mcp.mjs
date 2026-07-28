@@ -255,7 +255,7 @@ async function waitForHealthyEndpoint(configuration, timeoutMs, launchedProcess 
     if (await endpointIsHealthy(endpoint)) {
       return endpoint
     }
-    if (launchedProcess?.exitCode !== null) {
+    if (launchedProcess && launchedProcess.exitCode !== null) {
       throw new Error(
         "独立 Chrome 启动后立即退出，常见原因是旧任务仍占用同一资料目录",
       )
