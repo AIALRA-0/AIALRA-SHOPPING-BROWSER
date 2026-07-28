@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { access, mkdtemp, readdir, rm } from "node:fs/promises"
+import { access, mkdtemp, readdir, rm, unlink } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -154,6 +154,19 @@ test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", {
   firstRpc.notify("notifications/initialized")
   secondRpc.notify("notifications/initialized")
 
+  await unlink(join(temporaryRoot, "profile", "DevToolsActivePort"))
+  const recoveredChild = launchClient()
+  const recoveredRpc = createRpcClient(recoveredChild)
+  await recoveredRpc.request("initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: {
+      name: "aialra-shopping-browser-smoke-recovered",
+      version: "0.1.0",
+    },
+  })
+  recoveredRpc.notify("notifications/initialized")
+
   const listed = await firstRpc.request("tools/list")
   const names = new Set(listed.tools.map((tool) => tool.name))
   assert.ok(names.has("browser_navigate"))
@@ -191,6 +204,19 @@ test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", {
     .map((entry) => entry.text)
     .join("\n")
   assert.match(secondText, /本地测试商品/)
+  await recoveredRpc.request("tools/call", {
+    name: "browser_navigate",
+    arguments: { url: fixtureUrl },
+  })
+  const recoveredSnapshot = await recoveredRpc.request("tools/call", {
+    name: "browser_snapshot",
+    arguments: {},
+  })
+  const recoveredText = recoveredSnapshot.content
+    .filter((entry) => entry.type === "text")
+    .map((entry) => entry.text)
+    .join("\n")
+  assert.match(recoveredText, /本地测试商品/)
   for (const readStderr of errors) {
     const stderr = readStderr()
     assert.equal(stderr.includes("Browser is already in use"), false, stderr)

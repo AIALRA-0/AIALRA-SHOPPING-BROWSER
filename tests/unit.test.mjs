@@ -15,6 +15,7 @@ import {
   createSessionOutputDirectory,
   PLAYWRIGHT_MCP_VERSION,
   removeSessionOutputDirectory,
+  readOwnedBrowserEndpoint,
   resolveBrowserExecutable,
   sanitizeClientMessage,
   sanitizeProtocolLine,
@@ -134,6 +135,37 @@ test("后续启动只清理已经退出客户端留下的目录", (t) => {
   assert.equal(existsSync(staleDirectory), false)
   assert.equal(existsSync(liveDirectory), true)
   removeSessionOutputDirectory(configuration, liveDirectory)
+})
+
+test("端口记录丢失时只接受当前资料对应的本机浏览器状态", (t) => {
+  const temporaryRoot = `/tmp/aialra-shopping-browser-owner-${process.pid}`
+  const configuration = buildLaunchConfiguration({
+    AIALRA_SHOPPING_BROWSER_EXECUTABLE: process.execPath,
+    AIALRA_SHOPPING_BROWSER_PROFILE_DIR: `${temporaryRoot}/profile`,
+    AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: `${temporaryRoot}/output`,
+  })
+  t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }))
+  writeFileSync(
+    `${configuration.singletonDirectory}/browser-owner.json`,
+    `${JSON.stringify({
+      pid: process.pid,
+      endpoint: "http://127.0.0.1:43210",
+      profile_directory: configuration.profileDirectory,
+    })}\n`,
+    { mode: 0o600 },
+  )
+  assert.equal(readOwnedBrowserEndpoint(configuration), "http://127.0.0.1:43210")
+
+  writeFileSync(
+    `${configuration.singletonDirectory}/browser-owner.json`,
+    `${JSON.stringify({
+      pid: process.pid,
+      endpoint: "http://example.com:43210",
+      profile_directory: configuration.profileDirectory,
+    })}\n`,
+    { mode: 0o600 },
+  )
+  assert.equal(readOwnedBrowserEndpoint(configuration), null)
 })
 
 test("浏览器程序可以通过明确的绝对路径配置", () => {

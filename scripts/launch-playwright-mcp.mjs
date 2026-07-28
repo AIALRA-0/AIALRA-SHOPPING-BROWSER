@@ -265,6 +265,10 @@ function devtoolsPortFile(configuration) {
   return resolve(configuration.profileDirectory, "DevToolsActivePort")
 }
 
+function browserOwnerFile(configuration) {
+  return resolve(configuration.singletonDirectory, "browser-owner.json")
+}
+
 export function readDevtoolsEndpoint(configuration) {
   const file = devtoolsPortFile(configuration)
   if (!existsSync(file)) {
@@ -276,6 +280,35 @@ export function readDevtoolsEndpoint(configuration) {
     return null
   }
   return `http://127.0.0.1:${port}`
+}
+
+export function readOwnedBrowserEndpoint(configuration) {
+  try {
+    const owner = JSON.parse(readFileSync(browserOwnerFile(configuration), "utf8"))
+    if (
+      owner.profile_directory !== configuration.profileDirectory ||
+      !processIsAlive(owner.pid) ||
+      typeof owner.endpoint !== "string"
+    ) {
+      return null
+    }
+    const endpoint = new URL(owner.endpoint)
+    if (
+      endpoint.protocol !== "http:" ||
+      endpoint.hostname !== "127.0.0.1" ||
+      endpoint.username ||
+      endpoint.password ||
+      endpoint.pathname !== "/" ||
+      endpoint.search ||
+      endpoint.hash ||
+      !endpoint.port
+    ) {
+      return null
+    }
+    return endpoint.origin
+  } catch {
+    return null
+  }
 }
 
 async function endpointIsHealthy(endpoint) {
@@ -294,6 +327,19 @@ async function endpointIsHealthy(endpoint) {
   } catch {
     return false
   }
+}
+
+async function findHealthyExistingEndpoint(configuration) {
+  const candidates = [
+    readDevtoolsEndpoint(configuration),
+    readOwnedBrowserEndpoint(configuration),
+  ]
+  for (const endpoint of new Set(candidates)) {
+    if (await endpointIsHealthy(endpoint)) {
+      return endpoint
+    }
+  }
+  return null
 }
 
 function sleep(milliseconds) {
@@ -354,7 +400,7 @@ async function waitForHealthyEndpoint(configuration, timeoutMs, launchedProcess 
 
 function writeOwnerState(configuration, browserProcess, endpoint) {
   writeFileSync(
-    resolve(configuration.singletonDirectory, "browser-owner.json"),
+    browserOwnerFile(configuration),
     `${JSON.stringify(
       {
         browser: configuration.browser,
@@ -371,8 +417,8 @@ function writeOwnerState(configuration, browserProcess, endpoint) {
 }
 
 export async function ensureSingletonBrowser(configuration) {
-  const existingEndpoint = readDevtoolsEndpoint(configuration)
-  if (await endpointIsHealthy(existingEndpoint)) {
+  const existingEndpoint = await findHealthyExistingEndpoint(configuration)
+  if (existingEndpoint) {
     return { endpoint: existingEndpoint, launched: false, browserProcess: null }
   }
   const ownsLock = acquireLaunchLock(configuration)
@@ -384,8 +430,8 @@ export async function ensureSingletonBrowser(configuration) {
     return { endpoint, launched: false, browserProcess: null }
   }
   try {
-    const endpointAfterLock = readDevtoolsEndpoint(configuration)
-    if (await endpointIsHealthy(endpointAfterLock)) {
+    const endpointAfterLock = await findHealthyExistingEndpoint(configuration)
+    if (endpointAfterLock) {
       return {
         endpoint: endpointAfterLock,
         launched: false,
