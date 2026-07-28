@@ -2,8 +2,11 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import {
+  buildBrowserArgs,
   buildLaunchConfiguration,
+  buildMcpArgs,
   PLAYWRIGHT_MCP_VERSION,
+  resolveBrowserExecutable,
   sanitizeClientMessage,
   sanitizeProtocolLine,
 } from "../scripts/launch-playwright-mcp.mjs"
@@ -33,24 +36,44 @@ test("URL 清理保留商品编号并移除追踪和令牌", () => {
   assert.equal(sanitized, "https://shop.invalid/item?id=123")
 })
 
-test("启动器固定依赖版本并使用 argv 和 shell false", () => {
+test("启动器固定依赖版本并让 MCP 连接共享 CDP 端点", () => {
   const profileDirectory = `/tmp/aialra-shopping-browser-unit-${process.pid}/profile`
   const outputDirectory = `/tmp/aialra-shopping-browser-unit-${process.pid}/output`
   const configuration = buildLaunchConfiguration({
+    AIALRA_SHOPPING_BROWSER_EXECUTABLE: process.execPath,
     AIALRA_SHOPPING_BROWSER_PROFILE_DIR: profileDirectory,
     AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: outputDirectory,
     AIALRA_SHOPPING_BROWSER_BROWSER: "chrome",
   })
+  const args = buildMcpArgs("http://127.0.0.1:12345", configuration)
   assert.equal(PLAYWRIGHT_MCP_VERSION, "0.0.78")
-  assert.ok(configuration.args.includes(`@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`))
-  assert.ok(configuration.args.includes("--user-data-dir"))
-  assert.ok(configuration.args.includes("--output-max-size"))
-  assert.ok(configuration.args.includes("--output-mode"))
+  assert.ok(args.includes(`@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`))
+  assert.ok(args.includes("--cdp-endpoint"))
   assert.equal(
-    configuration.args[configuration.args.indexOf("--output-mode") + 1],
+    args[args.indexOf("--cdp-endpoint") + 1],
+    "http://127.0.0.1:12345",
+  )
+  assert.equal(args.includes("--user-data-dir"), false)
+  assert.ok(args.includes("--output-max-size"))
+  assert.ok(args.includes("--output-mode"))
+  assert.equal(
+    args[args.indexOf("--output-mode") + 1],
     "stdout",
   )
+  const browserArgs = buildBrowserArgs(configuration)
+  assert.ok(browserArgs.includes(`--user-data-dir=${profileDirectory}`))
+  assert.ok(browserArgs.includes("--remote-debugging-address=127.0.0.1"))
+  assert.ok(browserArgs.includes("--remote-debugging-port=0"))
   assert.equal(configuration.workingDirectory, outputDirectory)
+})
+
+test("浏览器程序可以通过明确的绝对路径配置", () => {
+  const executable = resolveBrowserExecutable(
+    "chrome",
+    { AIALRA_SHOPPING_BROWSER_EXECUTABLE: "/opt/aialra/chrome" },
+    (candidate) => candidate === "/opt/aialra/chrome",
+  )
+  assert.equal(executable, "/opt/aialra/chrome")
 })
 
 test("启动器拒绝把资料写入插件仓库", () => {

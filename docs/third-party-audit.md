@@ -7,8 +7,13 @@
 - 仓库为 `https://github.com/microsoft/playwright-mcp`
 - 许可证为 Apache-2.0
 - 提供标准 MCP、持久浏览器资料、可见 Chrome、页面快照和持续维护
+- 官方文档明确说明同一持久资料不能被多个浏览器实例并发使用
+- 官方参数提供 `--cdp-endpoint`，允许多个 MCP 客户端连接已经运行的 Chromium 浏览器
 - 本插件固定版本并通过本地 MCP 冒烟测试
+- 本插件采用单例独立 Chrome 与本机 CDP 连接，并用两个并发 MCP 客户端完成冒烟测试
 - 结论为浏览器核心
+
+官方来源为 [Playwright MCP 仓库与配置说明](https://github.com/microsoft/playwright-mcp)
 
 ## 只学习架构
 

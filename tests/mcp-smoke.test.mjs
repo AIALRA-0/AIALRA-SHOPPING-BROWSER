@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
+import { once } from "node:events"
 import { access, mkdtemp, rm } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
@@ -68,7 +69,7 @@ function createRpcClient(child) {
   return { request, notify }
 }
 
-test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, async (t) => {
+test("两个 MCP 客户端能共享独立 Chrome 并读取本地商品页面", { timeout: 180_000 }, async (t) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "aialra-shopping-browser-mcp-"))
   const server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" })
@@ -90,30 +91,47 @@ test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, a
   const address = server.address()
   const fixtureUrl = `http://127.0.0.1:${address.port}/search?q=test`
 
-  const child = spawn("node", ["scripts/launch-playwright-mcp.mjs"], {
-    cwd: new URL("../", import.meta.url),
-    env: {
-      ...process.env,
-      AIALRA_SHOPPING_BROWSER_PROFILE_DIR: join(temporaryRoot, "profile"),
-      AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: join(temporaryRoot, "output"),
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-    shell: false,
-  })
-  let stderr = ""
-  child.stderr.setEncoding("utf8")
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk
-  })
+  const commonEnvironment = {
+    ...process.env,
+    AIALRA_SHOPPING_BROWSER_KEEP_BROWSER_ALIVE: "false",
+    AIALRA_SHOPPING_BROWSER_PROFILE_DIR: join(temporaryRoot, "profile"),
+    AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: join(temporaryRoot, "output"),
+  }
+  const children = []
+  const errors = []
+
+  function launchClient() {
+    const child = spawn("node", ["scripts/launch-playwright-mcp.mjs"], {
+      cwd: new URL("../", import.meta.url),
+      env: commonEnvironment,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: false,
+    })
+    let stderr = ""
+    child.stderr.setEncoding("utf8")
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk
+    })
+    children.push(child)
+    errors.push(() => stderr)
+    return child
+  }
 
   t.after(async () => {
-    child.kill("SIGTERM")
+    for (const child of children.slice().reverse()) {
+      if (child.exitCode === null) {
+        child.kill("SIGTERM")
+        await Promise.race([once(child, "exit"), new Promise((resolve) => setTimeout(resolve, 5_000))])
+      }
+    }
     server.close()
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
     await rm(temporaryRoot, { recursive: true, force: true })
   })
 
-  const rpc = createRpcClient(child)
-  await rpc.request("initialize", {
+  const firstChild = launchClient()
+  const firstRpc = createRpcClient(firstChild)
+  await firstRpc.request("initialize", {
     protocolVersion: "2025-06-18",
     capabilities: {},
     clientInfo: {
@@ -121,19 +139,19 @@ test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, a
       version: "0.1.0",
     },
   })
-  rpc.notify("notifications/initialized")
+  firstRpc.notify("notifications/initialized")
 
-  const listed = await rpc.request("tools/list")
+  const listed = await firstRpc.request("tools/list")
   const names = new Set(listed.tools.map((tool) => tool.name))
   assert.ok(names.has("browser_navigate"))
   assert.ok(names.has("browser_snapshot"))
   assert.ok(names.has("browser_close"))
 
-  await rpc.request("tools/call", {
+  await firstRpc.request("tools/call", {
     name: "browser_navigate",
     arguments: { url: fixtureUrl },
   })
-  const snapshot = await rpc.request("tools/call", {
+  const snapshot = await firstRpc.request("tools/call", {
     name: "browser_snapshot",
     arguments: { filename: "raw-page.snapshot.md" },
   })
@@ -147,9 +165,33 @@ test("MCP 能启动 Chrome 并读取本地商品页面", { timeout: 180_000 }, a
     access(join(temporaryRoot, "output", "raw-page.snapshot.md")),
   )
 
-  await rpc.request("tools/call", {
-    name: "browser_close",
+  const secondChild = launchClient()
+  const secondRpc = createRpcClient(secondChild)
+  await secondRpc.request("initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: {
+      name: "aialra-shopping-browser-smoke-second",
+      version: "0.1.0",
+    },
+  })
+  secondRpc.notify("notifications/initialized")
+  await secondRpc.request("tools/call", {
+    name: "browser_navigate",
+    arguments: { url: fixtureUrl },
+  })
+  const secondSnapshot = await secondRpc.request("tools/call", {
+    name: "browser_snapshot",
     arguments: {},
   })
-  assert.equal(stderr.includes("Error"), false, stderr)
+  const secondText = secondSnapshot.content
+    .filter((entry) => entry.type === "text")
+    .map((entry) => entry.text)
+    .join("\n")
+  assert.match(secondText, /本地测试商品/)
+  for (const readStderr of errors) {
+    const stderr = readStderr()
+    assert.equal(stderr.includes("Browser is already in use"), false, stderr)
+    assert.equal(stderr.includes("Error"), false, stderr)
+  }
 })
