@@ -1,6 +1,6 @@
 {
   "name": "aialra-shopping-browser",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Validation and launch utilities for the AIALRA Shopping Browser Codex plugin",
   "license": "Apache-2.0",

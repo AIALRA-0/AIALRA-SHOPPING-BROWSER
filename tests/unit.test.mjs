@@ -2,11 +2,14 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { hostname } from "node:os"
 import {
   buildBrowserArgs,
   buildLaunchConfiguration,
@@ -14,6 +17,7 @@ import {
   cleanupStaleSessionDirectories,
   createSessionOutputDirectory,
   PLAYWRIGHT_MCP_VERSION,
+  removeStaleChromiumSingletonFiles,
   removeSessionOutputDirectory,
   readOwnedBrowserEndpoint,
   resolveBrowserExecutable,
@@ -135,6 +139,28 @@ test("后续启动只清理已经退出客户端留下的目录", (t) => {
   assert.equal(existsSync(staleDirectory), false)
   assert.equal(existsSync(liveDirectory), true)
   removeSessionOutputDirectory(configuration, liveDirectory)
+})
+
+test("后续启动只清理已经失效的 Chrome 单例链接", (t) => {
+  const temporaryRoot = `/tmp/aialra-shopping-browser-lock-${process.pid}`
+  const configuration = buildLaunchConfiguration({
+    AIALRA_SHOPPING_BROWSER_EXECUTABLE: process.execPath,
+    AIALRA_SHOPPING_BROWSER_PROFILE_DIR: `${temporaryRoot}/profile`,
+    AIALRA_SHOPPING_BROWSER_OUTPUT_DIR: `${temporaryRoot}/output`,
+  })
+  t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }))
+  symlinkSync("old-host-2147483647", `${configuration.profileDirectory}/SingletonLock`)
+  symlinkSync("cookie", `${configuration.profileDirectory}/SingletonCookie`)
+  symlinkSync("/tmp/missing-chrome-socket", `${configuration.profileDirectory}/SingletonSocket`)
+  assert.equal(removeStaleChromiumSingletonFiles(configuration), true)
+  assert.equal(existsSync(`${configuration.profileDirectory}/SingletonLock`), false)
+
+  symlinkSync(`${hostname()}-${process.pid}`, `${configuration.profileDirectory}/SingletonLock`)
+  assert.equal(removeStaleChromiumSingletonFiles(configuration), false)
+  assert.equal(
+    lstatSync(`${configuration.profileDirectory}/SingletonLock`).isSymbolicLink(),
+    true,
+  )
 })
 
 test("端口记录丢失时只接受当前资料对应的本机浏览器状态", (t) => {

@@ -3,8 +3,10 @@
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
+  readlinkSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -12,7 +14,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs"
-import { homedir, platform } from "node:os"
+import { homedir, hostname, platform } from "node:os"
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { fileURLToPath } from "node:url"
@@ -269,6 +271,38 @@ function browserOwnerFile(configuration) {
   return resolve(configuration.singletonDirectory, "browser-owner.json")
 }
 
+export function removeStaleChromiumSingletonFiles(configuration) {
+  const lockPath = resolve(configuration.profileDirectory, "SingletonLock")
+  const lockMetadata = lstatSync(lockPath, { throwIfNoEntry: false })
+  if (!lockMetadata) {
+    return false
+  }
+  if (!lockMetadata.isSymbolicLink()) {
+    throw new Error("Chrome 资料目录中的 SingletonLock 不是符号链接，拒绝自动删除")
+  }
+  const lockTarget = readlinkSync(lockPath)
+  const localPrefix = `${hostname()}-`
+  const ownerText = lockTarget.startsWith(localPrefix)
+    ? lockTarget.slice(localPrefix.length)
+    : ""
+  const ownerPid = /^\d+$/.test(ownerText) ? Number.parseInt(ownerText, 10) : null
+  if (Number.isInteger(ownerPid) && processIsAlive(ownerPid)) {
+    return false
+  }
+  for (const name of ["SingletonCookie", "SingletonLock", "SingletonSocket"]) {
+    const path = resolve(configuration.profileDirectory, name)
+    const metadata = lstatSync(path, { throwIfNoEntry: false })
+    if (!metadata) {
+      continue
+    }
+    if (!metadata.isSymbolicLink()) {
+      throw new Error(`Chrome 资料目录中的 ${name} 不是符号链接，拒绝自动删除`)
+    }
+    unlinkSync(path)
+  }
+  return true
+}
+
 export function readDevtoolsEndpoint(configuration) {
   const file = devtoolsPortFile(configuration)
   if (!existsSync(file)) {
@@ -438,6 +472,7 @@ export async function ensureSingletonBrowser(configuration) {
         browserProcess: null,
       }
     }
+    removeStaleChromiumSingletonFiles(configuration)
     const portFile = devtoolsPortFile(configuration)
     if (existsSync(portFile)) {
       unlinkSync(portFile)
